@@ -15,4 +15,14 @@ export const getCancelledOrders = async () => {
   return res.data;
 };
 
+export const getNormalOrders = async () => {
+  const res = await axios.get('/api/orders/normal');
+  return res.data;
+};
+
+export const getOrdersByUserId = async (userId) => {
+  const res = await axios.get(`/api/orders/user/${userId}`);
+  return res.data;
+};
+
 

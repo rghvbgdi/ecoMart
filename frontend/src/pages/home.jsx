@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getUnsoldProducts, getProductById } from '../apis/product';
-import { createOrder } from '../apis/orders';
 import { status as checkAuthStatus } from '../apis/auth';
 import { getGreenProducts } from '../apis/green';
 import Cookies from 'js-cookie';

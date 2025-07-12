@@ -76,6 +76,32 @@ exports.getGreenProducts = async (req, res) => {
     res.status(500).json({ message: 'Error fetching green products', error: err.message });
   }
 };
+
+// Get single green product by ID
+exports.getGreenProductById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'Invalid product ID format' });
+    }
+    
+    const greenProduct = await GreenProduct.findById(id).populate('productId');
+    
+    if (!greenProduct) {
+      return res.status(404).json({ message: 'Green product not found' });
+    }
+    
+    if (greenProduct.isSold) {
+      return res.status(400).json({ message: 'This green product has already been sold' });
+    }
+    
+    res.status(200).json(greenProduct);
+  } catch (err) {
+    res.status(500).json({ message: 'Error fetching green product', error: err.message });
+  }
+};
+
 //get sold green products
 exports.getSoldGreenProducts = async (req, res) => {
   try {

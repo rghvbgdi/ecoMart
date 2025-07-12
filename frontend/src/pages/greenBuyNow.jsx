@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getGreenProducts, createGreenOrder } from '../apis/green';
+import { getGreenProductById, createGreenOrder } from '../apis/green';
 import { status as checkAuthStatus } from '../apis/auth';
 
 const GreenBuyNow = () => {
@@ -20,10 +20,10 @@ const GreenBuyNow = () => {
         const authRes = await checkAuthStatus();
         setUser(authRes.user);
         setShippingAddress(authRes.user?.location || '');
-        // Fetch green product details from the list
-        const allGreen = await getGreenProducts();
-        const found = allGreen.find(g => g._id === id);
-        setGreenProduct(found);
+        
+        // Fetch specific green product by ID - much more efficient!
+        const product = await getGreenProductById(id);
+        setGreenProduct(product);
       } catch (err) {
         setError('Failed to load green product or user info.');
       } finally {

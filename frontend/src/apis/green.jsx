@@ -16,6 +16,11 @@ export const getGreenProducts = async () => {
   return res.data;
 };
 
+export const getGreenProductById = async (id) => {
+  const res = await axios.get(`${API_URL}/products/${id}`);
+  return res.data;
+};
+
 export const getSoldGreenProducts = async () => {
   const res = await axios.get('/api/green/products/sold');
   return res.data;

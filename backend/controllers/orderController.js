@@ -87,3 +87,25 @@ exports.getUserOrders = async (req, res) => {
     res.status(500).json({ message: 'Error fetching user orders', error: err.message });
   }
 };
+
+// Get all orders for a particular user by userId (admin or internal use)
+exports.getOrdersByUserId = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    if (!userId) return res.status(400).json({ message: 'User ID required' });
+    const orders = await Order.find({ customerId: userId }).populate('product.productId');
+    res.status(200).json(orders);
+  } catch (err) {
+    res.status(500).json({ message: 'Error fetching user orders', error: err.message });
+  }
+};
+
+// Get all normal (non-green, non-cancelled) orders
+exports.getNormalOrders = async (req, res) => {
+  try {
+    const normalOrders = await Order.find({ isGreenProduct: false, isCancelled: false });
+    res.status(200).json(normalOrders);
+  } catch (err) {
+    res.status(500).json({ message: 'Error fetching normal orders', error: err.message });
+  }
+};

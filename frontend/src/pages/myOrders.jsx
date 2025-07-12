@@ -1,14 +1,14 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { status as checkAuthStatus } from '../apis/auth';
 import { getGreenOrders } from '../apis/green';
-import { getCancelledOrders, cancelOrder } from '../apis/orders';
-// import axios from 'axios';
+import { getOrdersByUserId, getCancelledOrders, cancelOrder } from '../apis/orders';
 import { getProductById } from '../apis/product';
-import { getGreenProducts } from '../apis/green';
-import { Leaf, Package, Calendar, MapPin, Award, Zap, Recycle, TreePine, ShoppingBag, X, Phone } from 'lucide-react';
+import { Leaf, Package, Calendar, MapPin, Award, Zap, Recycle, TreePine, ShoppingBag, X, Phone, Navigation } from 'lucide-react';
 import Cookies from 'js-cookie';
 
 const MyOrders = () => {
+  const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [orders, setOrders] = useState([]);
   const [greenOrders, setGreenOrders] = useState([]);
@@ -26,6 +26,7 @@ const MyOrders = () => {
     totalAmount: 0
   });
   const [userLocation, setUserLocation] = useState('Unknown');
+  const [cancelledOrders, setCancelledOrders] = useState([]);
 
   useEffect(() => {
     setUserLocation(Cookies.get('user_location') || 'Unknown');
@@ -35,10 +36,11 @@ const MyOrders = () => {
         setUser(authRes.user);
         const userId = authRes.user.id || authRes.user._id;
         // Fetch all orders for this user (normal and green)
-        const [allOrdersRes, greenOrdersRes, cancelledOrdersRes] = await Promise.all([
+        const [allOrdersRes, greenOrdersRes, cancelledOrdersRes, allUserOrdersRes] = await Promise.all([
           fetch('/api/orders/user').then(res => res.json()),
           getGreenOrders(),
-          getCancelledOrders()
+          getCancelledOrders(),
+          getOrdersByUserId(userId)
         ]);
         // Filter out cancelled orders
         const cancelledIds = new Set(cancelledOrdersRes.map(o => o._id));
@@ -53,12 +55,13 @@ const MyOrders = () => {
           !o.isCancelled &&
           (o.customerId === userId)
         );
+        // Cancelled orders from getOrdersByUserId
+        const cancelledOrders = allUserOrdersRes.filter(o => o.isCancelled);
         // Fetch product and green product details for green orders
         setDetailsLoading(true);
         const productIds = Array.from(new Set(userGreenOrders.map(o => o.product?.productId)));
         const productDetails = {};
         const greenProductDetails = {};
-        
         await Promise.all(productIds.map(async (pid) => {
           if (!pid) return;
           try {
@@ -71,29 +74,23 @@ const MyOrders = () => {
             if (greenProd) greenProductDetails[pid] = greenProd;
           } catch {}
         }));
-        
         setProductDetailsMap(productDetails);
         setGreenProductMap(greenProductDetails);
         setDetailsLoading(false);
-        
-        // Sort: upcoming (createdAt in future) first, then by createdAt desc
-        const now = new Date();
-        const allOrders = [...normalOrders, ...userGreenOrders];
-        const upcoming = allOrders.filter(o => new Date(o.createdAt) > now);
-        const past = allOrders.filter(o => new Date(o.createdAt) <= now);
-        
-        setOrders([...upcoming, ...past].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
+        // Set orders (no upcoming/past split)
+        const allOrders = [...normalOrders, ...userGreenOrders, ...cancelledOrders];
+        setOrders(allOrders.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
         setGreenOrders(userGreenOrders.map(o => o._id));
-        
         // Use greenCoins and carbonFootprintSaved from user object (like navbar)
         setStats({
           totalOrders: allOrdersRes.length,
-          greenOrders: greenOrdersRes.filter(o => !o.isCancelled && o.customerId === userId).length,
+          greenOrders: userGreenOrders.length,
           totalCarbonSaved: authRes.user.carbonFootprintSaved || 0,
           totalGreenCoins: authRes.user.greenCoins || 0,
           totalAmount: (authRes.user.greenCoins || 0) * 20.4
         });
-        
+        // Store cancelled orders for filter
+        setCancelledOrders(cancelledOrders);
       } catch (err) {
         setError('Failed to fetch orders.');
       } finally {
@@ -104,16 +101,12 @@ const MyOrders = () => {
   }, []);
 
   const filteredOrders = orders.filter(order => {
-    const now = new Date();
-    const isUpcoming = new Date(order.createdAt) > now;
     const isGreen = order.isGreenProduct;
-    
     switch (filter) {
-      case 'green': return isGreen;
-      case 'normal': return !isGreen;
-      case 'upcoming': return isUpcoming;
-      case 'past': return !isUpcoming;
-      default: return true;
+      case 'green': return isGreen && !order.isCancelled;
+      case 'normal': return !isGreen && !order.isCancelled;
+      case 'cancelled': return order.isCancelled;
+      default: return !order.isCancelled;
     }
   });
 
@@ -238,8 +231,7 @@ const MyOrders = () => {
               { key: 'all', label: 'All Orders', icon: Package },
               { key: 'green', label: 'Green Orders', icon: Leaf },
               { key: 'normal', label: 'Regular Orders', icon: ShoppingBag },
-              { key: 'upcoming', label: 'Upcoming', icon: Calendar },
-              { key: 'past', label: 'Past Orders', icon: Calendar }
+              { key: 'cancelled', label: 'Cancelled Orders', icon: X }
             ].map(({ key, label, icon: Icon }) => (
               <button
                 key={key}
@@ -274,9 +266,6 @@ const MyOrders = () => {
               ) : (
                 filteredOrders.map(order => {
                   const isGreen = order.isGreenProduct;
-                  const now = new Date();
-                  const isUpcoming = new Date(order.createdAt) > now;
-                  
                   let product = null, greenProduct = null;
                   if (isGreen && order.product?.productId) {
                     product = productDetailsMap[order.product.productId];
@@ -284,18 +273,30 @@ const MyOrders = () => {
                   } else if (order.product?.productId) {
                     product = order.product.productId;
                   }
-
+                  // For green orders, always use productDetailsMap for product info
+                  if (isGreen && order.product?.productId) {
+                    product = productDetailsMap[order.product.productId];
+                  }
                   return (
                     <div
                       key={order._id}
                       className={`relative overflow-hidden rounded-2xl shadow-lg transition-all hover:shadow-xl ${
-                        isGreen 
-                          ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200' 
-                          : 'bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200'
+                        order.isCancelled
+                          ? 'bg-gradient-to-r from-red-50 to-red-100 border-2 border-red-200 opacity-70'
+                          : isGreen 
+                            ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200' 
+                            : 'bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200'
                       }`}
                     >
+                      {/* Cancelled Badge */}
+                      {order.isCancelled && (
+                        <div className="absolute top-4 right-4 bg-red-500 text-white px-3 py-1 rounded-full text-sm font-semibold flex items-center gap-1">
+                          <X className="w-4 h-4" />
+                          CANCELLED
+                        </div>
+                      )}
                       {/* Green Badge */}
-                      {isGreen && (
+                      {!order.isCancelled && isGreen && (
                         <div className="absolute top-4 right-4 bg-green-500 text-white px-3 py-1 rounded-full text-sm font-semibold flex items-center gap-1">
                           <Leaf className="w-4 h-4" />
                           ECO-FRIENDLY
@@ -355,13 +356,16 @@ const MyOrders = () => {
 
                               {/* Action Buttons */}
                               <div className="flex flex-col items-end gap-3">
-                                <div className={`px-4 py-2 rounded-full text-sm font-semibold ${
-                                  isUpcoming 
-                                    ? 'bg-blue-100 text-blue-800' 
-                                    : 'bg-gray-100 text-gray-800'
-                                }`}>
-                                  {isUpcoming ? '🚚 Upcoming' : '📦 Delivered'}
-                                </div>
+                                {/* Track Order Button */}
+                                {!order.isCancelled && (
+                                  <button
+                                    className="flex items-center gap-2 px-4 py-2 bg-indigo-500 text-white rounded-lg font-medium shadow hover:bg-indigo-600 transition-all"
+                                    onClick={() => navigate(`/track/${order._id}`)}
+                                  >
+                                    <Navigation className="w-4 h-4" />
+                                    Track Order
+                                  </button>
+                                )}
                                 
                                 {!order.isCancelled && (
                                   isGreen ? (
@@ -395,7 +399,7 @@ const MyOrders = () => {
                             </div>
 
                             {/* Green Product Benefits */}
-                            {isGreen && greenProduct && (
+                            {isGreen && greenProductMap[order.product?.productId] && (
                               <div className="mt-4 p-4 bg-white rounded-xl border border-green-200">
                                 <h4 className="font-semibold text-green-800 mb-3 flex items-center gap-2">
                                   <Leaf className="w-5 h-5" />
@@ -408,7 +412,7 @@ const MyOrders = () => {
                                     </div>
                                     <div>
                                       <p className="text-sm text-gray-600">Green Coins Earned</p>
-                                      <p className="font-bold text-green-700">{greenProduct.greenCoins || 'N/A'}</p>
+                                      <p className="font-bold text-green-700">{greenProductMap[order.product?.productId].greenCoins || 'N/A'}</p>
                                     </div>
                                   </div>
                                   <div className="flex items-center gap-3">
@@ -417,7 +421,7 @@ const MyOrders = () => {
                                     </div>
                                     <div>
                                       <p className="text-sm text-gray-600">CO₂ Footprint Reduced</p>
-                                      <p className="font-bold text-emerald-700">{greenProduct.carbonFootprint || 'N/A'} kg</p>
+                                      <p className="font-bold text-emerald-700">{greenProductMap[order.product?.productId].carbonFootprint || 'N/A'} kg</p>
                                     </div>
                                   </div>
                                 </div>
