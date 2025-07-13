@@ -5,6 +5,7 @@ const orderSchema = new mongoose.Schema({
   product: {
     productId: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true }
   },
+   
   shippingAddress: { type: String },
   isGreenProduct: { type: Boolean, default: false },
   isCancelled: { type: Boolean, default: false },

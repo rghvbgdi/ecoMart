@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getUnsoldProducts, getProductById } from '../apis/product';
+import { getUnsoldProducts } from '../apis/product';
 import { status as checkAuthStatus } from '../apis/auth';
-import { getGreenProducts } from '../apis/green';
+import { getNearbyGreenProducts } from '../apis/green';
 import Cookies from 'js-cookie';
 
 const Home = () => {
@@ -58,7 +58,7 @@ const Home = () => {
 
         const allProducts = await getUnsoldProducts();
         setProducts(allProducts);
-        const greenDealsRes = await getGreenProducts();
+        const greenDealsRes = await getNearbyGreenProducts(currentUserLocation);
         setGreenDeals(greenDealsRes);
       } catch (err) {
         setError('Failed to fetch data. Please try again later.');
@@ -168,32 +168,7 @@ const Home = () => {
               Exclusive Eco-Friendly Products • Extra Rewards • Save the Planet
             </p>
 
-            {greenDeals.length > 0 && (
-              <div className="flex flex-wrap justify-center gap-6 mb-8">
-                {/* Stat Boxes: More minimalist colors */}
-                <motion.div
-                  whileHover={{ scale: 1.05 }}
-                  className="bg-green-700 bg-opacity-20 backdrop-blur-sm rounded-2xl px-6 py-4 border border-green-600 border-opacity-40"
-                >
-                  <div className="text-3xl font-black text-amber-300">{greenDeals.length}</div>
-                  <div className="text-sm text-green-100">Exclusive Deals</div>
-                </motion.div>
-                <motion.div
-                  whileHover={{ scale: 1.05 }}
-                  className="bg-emerald-700 bg-opacity-20 backdrop-blur-sm rounded-2xl px-6 py-4 border border-emerald-600 border-opacity-40"
-                >
-                  <div className="text-3xl font-black text-green-300">50%</div>
-                  <div className="text-sm text-green-100">More Coins</div>
-                </motion.div>
-                <motion.div
-                  whileHover={{ scale: 1.05 }}
-                  className="bg-teal-700 bg-opacity-20 backdrop-blur-sm rounded-2xl px-6 py-4 border border-teal-600 border-opacity-40"
-                >
-                  <div className="text-3xl font-black text-blue-300">2X</div>
-                  <div className="text-sm text-green-100">Impact</div>
-                </motion.div>
-              </div>
-            )}
+
 
             <div className="flex flex-wrap justify-center gap-4">
               <motion.button
@@ -208,18 +183,7 @@ const Home = () => {
               >
                 {showGreenDealsOnly ? '🌍 Show All Products' : '🌱 View Green Deals Only'}
               </motion.button>
-              {isLoggedIn && (
-                <motion.div
-                  whileHover={{ scale: 1.05 }}
-                  className="flex items-center gap-2 px-6 py-3 bg-white text-blue-800 rounded-2xl font-bold text-lg border-2 border-blue-400 shadow-lg backdrop-blur-sm" // Minimalist location button
-                  style={{ minWidth: '200px' }}
-                >
-                  <svg className="w-6 h-6 text-blue-600 mr-2" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5A2.5 2.5 0 1 1 12 6a2.5 2.5 0 0 1 0 5.5z" />
-                  </svg>
-                  <span className="truncate">{userLocation}</span>
-                </motion.div>
-              )}
+              {/* Removed user location display here */}
             </div>
           </motion.div>
         </div>

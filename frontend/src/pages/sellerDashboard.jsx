@@ -5,9 +5,10 @@ import { status as checkAuthStatus, logout as logoutAPI } from '../apis/auth';
   // NEW (correct)
   import { getCancelledOrders } from '../apis/orders';
   import { getGreenOrders } from '../apis/green';
+  import { getNormalOrders } from '../apis/orders';
   import { getSoldGreenProducts } from '../apis/green';
   import { getSoldProducts } from '../apis/product';
-  import { getNormalOrders } from '../apis/orders';
+ 
 import { CheckCircle, Leaf, XCircle, HelpCircle } from 'lucide-react';
 
 const SellerDashboard = () => {

@@ -1,5 +1,5 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
-import { fetchUserStats } from '../apis/auth';
+import { status } from '../apis/auth';
 
 const AuthContext = createContext(null);
 
@@ -14,8 +14,8 @@ export const AuthProvider = ({ children }) => {
     const verifyUser = async () => {
       try {
         // This single API call now returns all necessary user info, including their role.
-        const response = await fetchUserStats();
-        const userData = response.data;
+        const response = await status();
+        const userData = response;
         setAuth({
           isLoggedIn: true,
           isAdmin: userData.role === 'admin', // Check the role directly from the response

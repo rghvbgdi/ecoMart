@@ -7,7 +7,10 @@ const cors = require('cors');
 
 
 app.use(cors({
-  origin: 'http://localhost:5173', // or wherever your frontend runs
+  origin: [
+    'http://localhost:5173',
+    'http://35.154.220.113:5173',  
+  ],
   credentials: true
 }));
 app.use(cookieParser());
@@ -30,17 +33,19 @@ app.get("/",(req,res)=> {
     const productRoutes = require('./routes/productRoutes');
     const orderRoutes = require('./routes/orderRoutes');
     const greenRoutes = require('./routes/greenRoutes');
-
+    const environmentalRoutes = require('./routes/environmentalRoutes');
+    const userRoutes= require('./routes/userRoutes');
     
     // Use routes
     app.use('/api/auth', authRoutes);
     app.use('/api/products', productRoutes);
     app.use('/api/orders', orderRoutes);
     app.use('/api/green', greenRoutes);
-  
+    app.use('/api/environmental', environmentalRoutes);
+  app.use('/api/user',userRoutes);
 
-    app.listen(process.env.PORT, () => {
-      console.log(`🚀 Server running on http://localhost:${process.env.PORT}`);
+    app.listen(process.env.PORT || 3000, '0.0.0.0', () => {
+      console.log(`🚀 Server running on http://0.0.0.0:${process.env.PORT || 3000}`);
     });
   } catch (err) {
     console.error("❌ Server failed to start:", err.message);

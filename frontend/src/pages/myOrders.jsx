@@ -290,16 +290,16 @@ const MyOrders = () => {
                     >
                       {/* Cancelled Badge */}
                       {order.isCancelled && (
-                        <div className="absolute top-4 right-4 bg-red-500 text-white px-3 py-1 rounded-full text-sm font-semibold flex items-center gap-1">
+                        <div className="absolute top-4 left-4 bg-gradient-to-r from-red-500 to-red-600 text-white px-4 py-2 rounded-full text-sm font-bold flex items-center gap-2 z-10 shadow-lg">
                           <X className="w-4 h-4" />
                           CANCELLED
                         </div>
                       )}
-                      {/* Green Badge */}
+                      {/* Green Badge - Creative placement */}
                       {!order.isCancelled && isGreen && (
-                        <div className="absolute top-4 right-4 bg-green-500 text-white px-3 py-1 rounded-full text-sm font-semibold flex items-center gap-1">
+                        <div className="absolute -top-3 -right-3 bg-gradient-to-r from-green-500 to-emerald-600 text-white px-4 py-2 rounded-full text-sm font-bold flex items-center gap-2 z-10 shadow-lg transform rotate-12">
                           <Leaf className="w-4 h-4" />
-                          ECO-FRIENDLY
+                          🌱 ECO
                         </div>
                       )}
 
@@ -355,11 +355,11 @@ const MyOrders = () => {
                               </div>
 
                               {/* Action Buttons */}
-                              <div className="flex flex-col items-end gap-3">
+                              <div className="flex flex-col items-end gap-3 min-w-[140px]">
                                 {/* Track Order Button */}
                                 {!order.isCancelled && (
                                   <button
-                                    className="flex items-center gap-2 px-4 py-2 bg-indigo-500 text-white rounded-lg font-medium shadow hover:bg-indigo-600 transition-all"
+                                    className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-500 to-indigo-600 text-white rounded-lg font-medium shadow-lg hover:shadow-xl hover:from-indigo-600 hover:to-indigo-700 transition-all duration-200 w-full justify-center"
                                     onClick={() => navigate(`/track/${order._id}`)}
                                   >
                                     <Navigation className="w-4 h-4" />
@@ -370,7 +370,7 @@ const MyOrders = () => {
                                 {!order.isCancelled && (
                                   isGreen ? (
                                     <button
-                                      className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg font-medium shadow hover:bg-blue-600 transition-all"
+                                      className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg font-medium shadow-lg hover:shadow-xl hover:from-blue-600 hover:to-blue-700 transition-all duration-200 w-full justify-center"
                                       disabled
                                     >
                                       <Phone className="w-4 h-4" />
@@ -378,7 +378,7 @@ const MyOrders = () => {
                                     </button>
                                   ) : (
                                     <button
-                                      className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg font-medium shadow hover:bg-red-600 transition-all"
+                                      className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg font-medium shadow-lg hover:shadow-xl hover:from-red-600 hover:to-red-700 transition-all duration-200 w-full justify-center"
                                       onClick={async () => {
                                         if (confirm('Are you sure you want to cancel this order?')) {
                                           try {

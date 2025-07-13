@@ -3,17 +3,48 @@ const Product = require('../model/products');
 const GreenProduct = require('../model/greenproduct');
 const User = require('../model/users');
 const mongoose = require('mongoose');
+const axios = require('axios');
 
 // Helper: 7 warehouse locations in India
 const warehouseLocations = [
   { latitude: 28.6139, longitude: 77.2090 }, // Delhi
-  { latitude: 19.0760, longitude: 72.8777 }, // Mumbai
-  { latitude: 13.0827, longitude: 80.2707 }, // Chennai
-  { latitude: 22.5726, longitude: 88.3639 }, // Kolkata
-  { latitude: 12.9716, longitude: 77.5946 }, // Bangalore
-  { latitude: 17.3850, longitude: 78.4867 }, // Hyderabad
-  { latitude: 23.0225, longitude: 72.5714 }  // Ahmedabad
 ];
+
+// Helper: Haversine formula (reuse your existing one)
+const calculateDistance = (lat1, lon1, lat2, lon2) => {
+  const R = 6371; // km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) *
+      Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+};
+
+
+
+const getUserLocationCoordinates = async (userLocation) => {
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(userLocation)}`;
+    const response = await axios.get(url, { headers: { 'User-Agent': 'green-deals-app' } });
+    if (response.data && response.data.length > 0) {
+      return {
+        lat: parseFloat(response.data[0].lat),
+        lng: parseFloat(response.data[0].lon),
+        name: userLocation
+      };
+    }
+    // Fallback: Delhi
+    return { lat: 28.6139, lng: 77.2090, name: userLocation || 'Unknown Location' };
+  } catch (err) {
+    // Fallback: Delhi
+    return { lat: 28.6139, lng: 77.2090, name: userLocation || 'Unknown Location' };
+  }
+};
 
 // Create green order
 exports.createGreenOrder = async (req, res) => {
@@ -51,6 +82,9 @@ exports.createGreenOrder = async (req, res) => {
       isGreenProduct: true
     });
     await order.save();
+    
+
+    
     res.status(201).json({ message: 'Green order created', order });
   } catch (err) {
     res.status(500).json({ message: 'Error creating green order', error: err.message });
@@ -64,6 +98,30 @@ exports.getGreenOrders = async (req, res) => {
     res.status(200).json(greenOrders);
   } catch (err) {
     res.status(500).json({ message: 'Error fetching green orders', error: err.message });
+  }
+};
+
+// Get green order by ID
+exports.getGreenOrderById = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    if (!orderId) return res.status(400).json({ message: 'Order ID required' });
+    
+    const order = await Order.findById(orderId).populate('product.productId');
+    if (!order) {
+      return res.status(404).json({ message: 'Green order not found' });
+    }
+    
+    // Verify it's actually a green order
+    if (!order.isGreenProduct) {
+      return res.status(400).json({ message: 'This is not a green order' });
+    }
+    
+
+    
+    res.status(200).json(order);
+  } catch (err) {
+    res.status(500).json({ message: 'Error fetching green order', error: err.message });
   }
 };
 
@@ -109,6 +167,38 @@ exports.getSoldGreenProducts = async (req, res) => {
     res.status(200).json(soldGreenProducts);
   } catch (err) {
     res.status(500).json({ message: 'Error fetching sold green products', error: err.message });
+  }
+};
+
+exports.getNearbyGreenProducts = async (req, res) => {
+  try {
+    const { userLocation } = req.query;
+    if (!userLocation) return res.status(400).json({ message: 'User location required' });
+
+    const userCoords = await getUserLocationCoordinates(userLocation);
+
+    if (!userCoords || !userCoords.lat || !userCoords.lng) {
+      return res.status(400).json({ message: 'Could not determine user coordinates' });
+    }
+
+    const greenProducts = await GreenProduct.find({ isSold: false }).populate('productId');
+
+    console.log('User location:', userLocation, userCoords);
+    greenProducts.forEach(green => {
+      const wh = green.warehouseLocation;
+      const dist = calculateDistance(userCoords.lat, userCoords.lng, wh.latitude, wh.longitude);
+      console.log('Green product:', green._id, 'Warehouse:', wh, 'Distance:', dist);
+    });
+
+    const filtered = greenProducts.filter(green => {
+      const wh = green.warehouseLocation;
+      const dist = calculateDistance(userCoords.lat, userCoords.lng, wh.latitude, wh.longitude);
+      return dist <= 350;
+    });
+
+    res.json(filtered);
+  } catch (err) {
+    res.status(500).json({ message: 'Error fetching nearby green products', error: err.message });
   }
 };
   

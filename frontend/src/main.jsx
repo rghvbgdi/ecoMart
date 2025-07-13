@@ -10,7 +10,8 @@ import SellerDashboard from './pages/sellerDashboard.jsx';
 import BuyNow from './pages/buynow.jsx';
 import MyOrders from './pages/myOrders.jsx';
 import GreenBuyNow from './pages/greenBuyNow.jsx';
-import OrderTracker from './components/OrderTracker.jsx';
+import TrackOrder from './pages/trackOrder.jsx';
+import Leaderboard from './pages/leaderboard.jsx';
 
 import MainLayout from './components/MainLayout.jsx';
 import SellerLayout from './components/SellerLayout.jsx';
@@ -31,7 +32,8 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="/buynow/:id" element={<BuyNow />} />
           <Route path="/greenbuynow/:id" element={<GreenBuyNow />} />
           <Route path="/myorders" element={<MyOrders />} />
-          <Route path="/track/:orderId" element={<OrderTracker />} />
+          <Route path="/leaderboard" element={<Leaderboard />} />
+          <Route path="/track/:orderId" element={<TrackOrder />} />
           <Route path="*" element={<NotFound />} />
         </Route>
         {/* Seller layout without Navbar */}

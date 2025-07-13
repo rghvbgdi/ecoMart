@@ -6,12 +6,6 @@ const mongoose = require('mongoose');
 // Helper: 7 warehouse locations in India
 const warehouseLocations = [
   { latitude: 28.6139, longitude: 77.2090 }, // Delhi
-  { latitude: 19.0760, longitude: 72.8777 }, // Mumbai
-  { latitude: 13.0827, longitude: 80.2707 }, // Chennai
-  { latitude: 22.5726, longitude: 88.3639 }, // Kolkata
-  { latitude: 12.9716, longitude: 77.5946 }, // Bangalore
-  { latitude: 17.3850, longitude: 78.4867 }, // Hyderabad
-  { latitude: 23.0225, longitude: 72.5714 }  // Ahmedabad
 ];
 
 // 1. Create normal order
@@ -31,6 +25,9 @@ exports.createOrder = async (req, res) => {
       shippingAddress
     });
     await order.save();
+    
+
+    
     res.status(201).json({ message: 'Order created', order });
   } catch (err) {
     res.status(500).json({ message: 'Error creating order', error: err.message });
@@ -107,5 +104,24 @@ exports.getNormalOrders = async (req, res) => {
     res.status(200).json(normalOrders);
   } catch (err) {
     res.status(500).json({ message: 'Error fetching normal orders', error: err.message });
+  }
+};
+
+// Get order by ID
+exports.getOrderById = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    if (!orderId) return res.status(400).json({ message: 'Order ID required' });
+    
+    const order = await Order.findById(orderId).populate('product.productId');
+    if (!order) {
+      return res.status(404).json({ message: 'Order not found' });
+    }
+    
+
+    
+    res.status(200).json(order);
+  } catch (err) {
+    res.status(500).json({ message: 'Error fetching order', error: err.message });
   }
 };

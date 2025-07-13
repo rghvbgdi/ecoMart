@@ -10,5 +10,5 @@ const greenproductSchema = new mongoose.Schema({
   greenCoins: { type: Number, required: true },
   isSold: { type: Boolean, default: false } // True if sold
 });
-
+ 
 module.exports = mongoose.model('GreenProduct', greenproductSchema);
