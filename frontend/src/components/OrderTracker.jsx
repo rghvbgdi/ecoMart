@@ -1,9 +1,13 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getProductById } from '../apis/product';
 import { getGreenOrders } from '../apis/green';
 import { getOrdersByUserId } from '../apis/orders';
 import { status as checkAuthStatus } from '../apis/auth';
+import { getGreenProductById } from '../apis/green';
+import { MapContainer, TileLayer, Marker, Polyline, Popup, Tooltip } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
+import L from 'leaflet';
 
 const OrderTracker = () => {
   const { orderId } = useParams();
@@ -14,9 +18,11 @@ const OrderTracker = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [riderLocation, setRiderLocation] = useState(null);
+  const [destinationCoords, setDestinationCoords] = useState(null);
+  const [mapKey, setMapKey] = useState(0);
+  const mapRef = useRef(null);
 
   useEffect(() => {
-    // Scroll to top when component mounts
     window.scrollTo(0, 0);
     
     const fetchOrderData = async () => {
@@ -24,11 +30,9 @@ const OrderTracker = () => {
         const authRes = await checkAuthStatus();
         setUser(authRes.user);
 
-        // Try to find the order in both normal and green orders
         let foundOrder = null;
         let isGreenOrder = false;
 
-        // Check green orders first
         try {
           const greenOrders = await getGreenOrders();
           foundOrder = greenOrders.find(o => o._id === orderId);
@@ -39,7 +43,6 @@ const OrderTracker = () => {
           console.log('Not a green order, checking normal orders...');
         }
 
-        // If not found in green orders, check normal orders
         if (!foundOrder) {
           try {
             const normalOrders = await getOrdersByUserId(authRes.user.id || authRes.user._id);
@@ -54,29 +57,40 @@ const OrderTracker = () => {
         }
 
         setOrder(foundOrder);
-
-        // Fetch product details
         const productData = await getProductById(foundOrder.productId);
         setProduct(productData);
 
-        // Set rider location based on product type
+        let originCoords;
         if (isGreenOrder) {
-          // For green products, rider starts from warehouse
-          setRiderLocation({
-            lat: 19.0760, // Mumbai warehouse coordinates
-            lng: 72.8777,
-            name: 'Warehouse - Mumbai'
-          });
+          const greenProduct = await getGreenProductById(foundOrder.productId);
+          if (greenProduct && greenProduct.warehouseLocation) {
+            originCoords = {
+              lat: greenProduct.warehouseLocation.latitude,
+              lng: greenProduct.warehouseLocation.longitude,
+              name: 'Warehouse'
+            };
+          } else {
+            originCoords = { lat: 19.0760, lng: 72.8777, name: 'Warehouse - Mumbai' };
+          }
         } else {
-          // For normal products, rider starts from product origin
-          // Convert origin string to coordinates (simplified mapping)
-          const originCoords = getOriginCoordinates(productData.origin);
-          setRiderLocation({
-            lat: originCoords.lat,
-            lng: originCoords.lng,
+          const coords = await geocodeAddress(productData.origin);
+          originCoords = {
+            lat: coords?.lat || 20.5937,
+            lng: coords?.lng || 78.9629,
             name: `Origin - ${productData.origin}`
-          });
+          };
         }
+        setRiderLocation(originCoords);
+
+        if (foundOrder.shippingAddress) {
+          const coords = await geocodeAddress(foundOrder.shippingAddress);
+          setDestinationCoords(coords);
+        } else {
+          setDestinationCoords(null);
+        }
+
+        // Force map re-render
+        setMapKey(prev => prev + 1);
 
       } catch (err) {
         console.error('Error fetching order data:', err);
@@ -89,38 +103,70 @@ const OrderTracker = () => {
     fetchOrderData();
   }, [orderId]);
 
-  // Helper function to convert origin string to coordinates
-  const getOriginCoordinates = (origin) => {
-    const originMap = {
-      'India': { lat: 20.5937, lng: 78.9629 },
-      'China': { lat: 35.8617, lng: 104.1954 },
-      'Japan': { lat: 36.2048, lng: 138.2529 },
-      'USA': { lat: 37.0902, lng: -95.7129 },
-      'Germany': { lat: 51.1657, lng: 10.4515 },
-      'France': { lat: 46.2276, lng: 2.2137 },
-      'Italy': { lat: 41.8719, lng: 12.5674 },
-      'Spain': { lat: 40.4637, lng: -3.7492 },
-      'UK': { lat: 55.3781, lng: -3.4360 },
-      'Canada': { lat: 56.1304, lng: -106.3468 },
-      'Australia': { lat: -25.2744, lng: 133.7751 },
-      'Brazil': { lat: -14.2350, lng: -51.9253 },
-      'Mexico': { lat: 23.6345, lng: -102.5528 },
-      'South Korea': { lat: 35.9078, lng: 127.7669 },
-      'Netherlands': { lat: 52.1326, lng: 5.2913 },
-      'Switzerland': { lat: 46.8182, lng: 8.2275 },
-      'Sweden': { lat: 60.1282, lng: 18.6435 },
-      'Norway': { lat: 60.4720, lng: 8.4689 },
-      'Denmark': { lat: 56.2639, lng: 9.5018 },
-      'Finland': { lat: 61.9241, lng: 25.7482 }
-    };
+  // Auto-zoom and center map based on distance and midpoint
+  useEffect(() => {
+    if (mapRef.current && riderLocation && destinationCoords) {
+      const map = mapRef.current;
+      const lat1 = riderLocation.lat, lng1 = riderLocation.lng;
+      const lat2 = destinationCoords.lat, lng2 = destinationCoords.lng;
+      const distance = getDistanceKm(lat1, lng1, lat2, lng2);
+      const center = [(lat1 + lat2) / 2, (lng1 + lng2) / 2];
+      let zoom = 8;
+      if (distance > 10000) zoom = 2;
+      else if (distance > 5000) zoom = 3;
+      else if (distance > 2000) zoom = 4;
+      else if (distance > 1000) zoom = 5;
+      else if (distance > 500) zoom = 6;
+      else if (distance > 200) zoom = 7;
+      map.setView(center, zoom, { animate: true });
+    }
+  }, [riderLocation, destinationCoords, mapRef]);
 
-    return originMap[origin] || { lat: 20.5937, lng: 78.9629 }; // Default to India
+  const geocodeAddress = async (address) => {
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`
+      );
+      const data = await response.json();
+      if (data && data.length > 0) {
+        return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  };
+
+  const getDistanceKm = (lat1, lng1, lat2, lng2) => {
+    const toRad = (v) => (v * Math.PI) / 180;
+    const R = 6371;
+    const dLat = toRad(lat2 - lat1);
+    const dLng = toRad(lng2 - lng1);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+      Math.sin(dLng / 2) * Math.sin(dLng / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  };
+
+  const getBounds = (lat1, lng1, lat2, lng2) => {
+    const minLat = Math.min(lat1, lat2);
+    const maxLat = Math.max(lat1, lat2);
+    const minLng = Math.min(lng1, lng2);
+    const maxLng = Math.max(lng1, lng2);
+    
+    const padding = 2; // degrees
+    return [
+      [minLat - padding, minLng - padding],
+      [maxLat + padding, maxLng + padding]
+    ];
   };
 
   const getOrderStatus = () => {
     if (!order) return { currentStep: 0, steps: [] };
     
-    const steps = ['Order Placed', 'Packed', 'Out for Delivery', 'Delivered'];
+    const steps = ['Order Placed', 'Processing', 'Out for Delivery', 'Delivered'];
     let currentStep = 0;
 
     if (order.status === 'cancelled') {
@@ -147,12 +193,37 @@ const OrderTracker = () => {
     return { currentStep, steps };
   };
 
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'delivered': return 'bg-green-500';
+      case 'shipped': return 'bg-blue-500';
+      case 'packed': return 'bg-yellow-500';
+      case 'cancelled': return 'bg-red-500';
+      default: return 'bg-gray-500';
+    }
+  };
+
+  const getStatusIcon = (status) => {
+    switch (status) {
+      case 'delivered': return '🎉';
+      case 'shipped': return '🚚';
+      case 'packed': return '📦';
+      case 'cancelled': return '❌';
+      default: return '🔄';
+    }
+  };
+
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50">
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-4 border-indigo-500 border-t-transparent mx-auto mb-4"></div>
-          <p className="text-indigo-600 font-medium">Loading order details...</p>
+          <div className="relative">
+            <div className="animate-spin rounded-full h-20 w-20 border-4 border-blue-200 border-t-blue-600 mx-auto"></div>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <span className="text-blue-600 text-2xl">📦</span>
+            </div>
+          </div>
+          <p className="text-blue-700 font-semibold mt-4 text-lg">Loading your order...</p>
         </div>
       </div>
     );
@@ -160,16 +231,16 @@ const OrderTracker = () => {
 
   if (error || !order || !product) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-red-50 via-orange-50 to-yellow-50">
-        <div className="text-center bg-white rounded-2xl shadow-xl p-8 max-w-md">
-          <div className="text-red-500 text-6xl mb-4">⚠️</div>
-          <h2 className="text-2xl font-bold text-red-600 mb-2">Order Not Found</h2>
-          <p className="text-red-500 mb-4">{error || 'The order you\'re looking for doesn\'t exist.'}</p>
+      <div className="min-h-screen bg-gradient-to-br from-red-50 via-pink-50 to-orange-50 flex items-center justify-center p-4">
+        <div className="text-center bg-white rounded-3xl shadow-2xl p-8 max-w-md border border-red-100">
+          <div className="text-red-500 text-7xl mb-4">😔</div>
+          <h2 className="text-3xl font-bold text-red-600 mb-4">Order Not Found</h2>
+          <p className="text-red-500 mb-6 text-lg">{error || 'The order you\'re looking for doesn\'t exist.'}</p>
           <button 
             onClick={() => navigate('/myOrders')}
-            className="px-6 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+            className="px-8 py-3 bg-gradient-to-r from-red-500 to-pink-500 text-white rounded-xl hover:from-red-600 hover:to-pink-600 transition-all duration-300 font-semibold shadow-lg hover:shadow-xl transform hover:scale-105"
           >
-            Go Back to Orders
+            ← Back to Orders
           </button>
         </div>
       </div>
@@ -177,123 +248,237 @@ const OrderTracker = () => {
   }
 
   const { currentStep, steps } = getOrderStatus();
+  const distance = riderLocation && destinationCoords 
+    ? getDistanceKm(riderLocation.lat, riderLocation.lng, destinationCoords.lat, destinationCoords.lng)
+    : 0;
+
+  const pickupIcon = L.divIcon({
+    html: `<div style="background: #10b981; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; border: 3px solid white; box-shadow: 0 2px 10px rgba(0,0,0,0.3);">📦</div>`,
+    className: 'custom-div-icon',
+    iconSize: [30, 30],
+    iconAnchor: [15, 15]
+  });
+
+  const deliveryIcon = L.divIcon({
+    html: `<div style="background: #ef4444; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; border: 3px solid white; box-shadow: 0 2px 10px rgba(0,0,0,0.3);">🏠</div>`,
+    className: 'custom-div-icon',
+    iconSize: [30, 30],
+    iconAnchor: [15, 15]
+  });
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-violet-50 via-indigo-50 to-blue-50 p-4 sm:p-6">
-      <div className="max-w-4xl mx-auto">
-        {/* Header */}
-        <div className="text-center mb-6">
-          <h1 className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-violet-600 to-indigo-600 bg-clip-text text-transparent mb-2">
-            Order Tracker
-          </h1>
-          <p className="text-gray-600">Track your order in real-time</p>
+    <div className="min-h-screen bg-gradient-to-br from-violet-50 via-blue-50 to-indigo-50">
+      {/* Header */}
+      <div className="bg-white shadow-sm border-b border-gray-100">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
+          <div className="text-center">
+            <h1 className="text-4xl sm:text-5xl font-bold bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600 bg-clip-text text-transparent mb-2">
+              Order Tracker
+            </h1>
+            <p className="text-gray-600 text-lg">Real-time tracking for your delivery</p>
+          </div>
         </div>
+      </div>
 
-        {/* Order Details Card */}
-        <div className="bg-white rounded-2xl shadow-xl p-6 mb-6">
-          <div className="grid md:grid-cols-2 gap-6">
-            <div>
-              <h3 className="text-xl font-bold text-gray-800 mb-4">Order Details</h3>
-              <div className="space-y-2">
-                <p><span className="font-semibold">Order ID:</span> {order._id}</p>
-                <p><span className="font-semibold">Product:</span> {product.name}</p>
-                <p><span className="font-semibold">Price:</span> ₹{product.price.toLocaleString()}</p>
-                <p><span className="font-semibold">Status:</span> 
-                  <span className={`ml-2 px-2 py-1 rounded-full text-xs font-medium ${
-                    order.status === 'delivered' ? 'bg-green-100 text-green-700' :
-                    order.status === 'cancelled' ? 'bg-red-100 text-red-700' :
-                    'bg-blue-100 text-blue-700'
-                  }`}>
-                    {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
-                  </span>
-                </p>
-                <p><span className="font-semibold">Origin:</span> {product.origin}</p>
-                <p><span className="font-semibold">Rider Location:</span> {riderLocation?.name}</p>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+        {/* Status Banner */}
+        <div className={`${getStatusColor(order.status)} rounded-2xl p-6 mb-8 text-white shadow-lg`}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <div className="text-4xl">{getStatusIcon(order.status)}</div>
+              <div>
+                <h2 className="text-2xl font-bold">
+                  {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
+                </h2>
+                <p className="text-white/90">Order #{order._id.slice(-8)}</p>
               </div>
             </div>
-            
-            <div>
-              <img 
-                src={product.imageUrl} 
-                alt={product.name} 
-                className="w-full h-48 object-cover rounded-lg"
-              />
+            <div className="text-right">
+              <p className="text-white/90 text-sm">Order Total</p>
+              <p className="text-2xl font-bold">₹{product.price.toLocaleString()}</p>
             </div>
           </div>
         </div>
 
-        {/* Order Progress */}
-        <div className="bg-white rounded-2xl shadow-xl p-6 mb-6">
-          <h3 className="text-xl font-bold text-gray-800 mb-4">Order Progress</h3>
-          
-          {order.status === 'cancelled' ? (
-            <div className="text-center py-8">
-              <div className="text-red-500 text-6xl mb-4">❌</div>
-              <h4 className="text-xl font-bold text-red-600 mb-2">Order Cancelled</h4>
-              <p className="text-red-500">This order has been cancelled.</p>
-            </div>
-          ) : (
-            <div className="flex justify-between items-center">
-              {steps.map((step, idx) => (
-                <div key={step} className="flex-1 text-center relative">
-                  <div className={`w-12 h-12 mx-auto rounded-full flex items-center justify-center text-white font-bold ${
-                    idx <= currentStep ? 'bg-green-500' : 'bg-gray-300'
-                  }`}>
-                    {idx + 1}
-                  </div>
-                  <div className={`mt-2 text-sm font-medium ${
-                    idx <= currentStep ? 'text-green-600' : 'text-gray-500'
-                  }`}>
-                    {step}
-                  </div>
-                  
-                  {/* Progress line */}
-                  {idx < steps.length - 1 && (
-                    <div className={`absolute top-6 left-1/2 w-full h-1 ${
-                      idx < currentStep ? 'bg-green-500' : 'bg-gray-300'
-                    }`} style={{ transform: 'translateX(50%)' }}></div>
-                  )}
+        {/* Main Content Grid */}
+        <div className="grid lg:grid-cols-3 gap-8">
+          {/* Left Column - Order Details */}
+          <div className="lg:col-span-1 space-y-6">
+            {/* Product Card */}
+            <div className="bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100">
+              <div className="relative">
+                <img 
+                  src={product.imageUrl} 
+                  alt={product.name} 
+                  className="w-full h-48 object-cover"
+                />
+                <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm rounded-full px-3 py-1 text-sm font-semibold text-gray-700">
+                  {product.origin}
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Map Section */}
-        {riderLocation && (
-          <div className="bg-white rounded-2xl shadow-xl p-6">
-            <h3 className="text-xl font-bold text-gray-800 mb-4">Rider Location</h3>
-            <div className="h-80 rounded-lg overflow-hidden border-2 border-gray-200">
-              <iframe
-                src={`https://www.google.com/maps/embed/v1/place?key=YOUR_GOOGLE_MAPS_API_KEY&q=${riderLocation.lat},${riderLocation.lng}`}
-                width="100%"
-                height="100%"
-                style={{ border: 0 }}
-                allowFullScreen=""
-                loading="lazy"
-                referrerPolicy="no-referrer-when-downgrade"
-              ></iframe>
-            </div>
-            <div className="mt-4 p-4 bg-blue-50 rounded-lg">
-              <div className="flex items-center gap-2">
-                <span className="text-blue-600">📍</span>
-                <span className="text-blue-700 font-medium">{riderLocation.name}</span>
               </div>
-              <p className="text-blue-600 text-sm mt-1">
-                {order.status === 'delivered' ? 'Order has been delivered!' : 
-                 'Rider is on the way to deliver your order'}
-              </p>
+              <div className="p-6">
+                <h3 className="text-xl font-bold text-gray-800 mb-2">{product.name}</h3>
+                <p className="text-gray-600 mb-4">Premium quality product</p>
+                <div className="flex justify-between items-center">
+                  <span className="text-2xl font-bold text-green-600">₹{product.price.toLocaleString()}</span>
+                  <span className="text-sm text-gray-500">Quantity: 1</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Route Info */}
+            <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-100">
+              <h3 className="text-xl font-bold text-gray-800 mb-4">Route Information</h3>
+              
+              <div className="space-y-4">
+                <div className="flex items-center space-x-3 p-3 bg-green-50 rounded-lg">
+                  <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center text-white text-sm font-bold">📦</div>
+                  <div>
+                    <p className="font-semibold text-gray-800">Pickup Location</p>
+                    <p className="text-sm text-gray-600">{riderLocation?.name}</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-center">
+                  <div className="border-l-2 border-dashed border-gray-300 h-8"></div>
+                </div>
+
+                <div className="flex items-center space-x-3 p-3 bg-red-50 rounded-lg">
+                  <div className="w-8 h-8 bg-red-500 rounded-full flex items-center justify-center text-white text-sm font-bold">🏠</div>
+                  <div>
+                    <p className="font-semibold text-gray-800">Delivery Address</p>
+                    <p className="text-sm text-gray-600">{order.shippingAddress}</p>
+                  </div>
+                </div>
+              </div>
+
+              {distance > 0 && (
+                <div className="mt-4 p-4 bg-purple-50 rounded-lg">
+                  <div className="flex justify-between items-center">
+                    <span className="text-purple-800 font-semibold">Total Distance</span>
+                    <span className="text-purple-600 font-bold">{distance.toFixed(0)} km</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Order Progress */}
+            <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-100">
+              <h3 className="text-xl font-bold text-gray-800 mb-6">Delivery Progress</h3>
+              
+              {order.status === 'cancelled' ? (
+                <div className="text-center py-8">
+                  <div className="text-red-500 text-6xl mb-4">❌</div>
+                  <h4 className="text-xl font-bold text-red-600 mb-2">Order Cancelled</h4>
+                  <p className="text-red-500">This order has been cancelled</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {steps.map((step, idx) => (
+                    <div key={step} className="flex items-center space-x-4">
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold transition-all duration-300 ${
+                        idx <= currentStep ? 'bg-green-500 shadow-lg' : 'bg-gray-300'
+                      }`}>
+                        {idx <= currentStep ? '✓' : idx + 1}
+                      </div>
+                      <div className="flex-1">
+                        <p className={`font-semibold transition-colors duration-300 ${
+                          idx <= currentStep ? 'text-green-600' : 'text-gray-500'
+                        }`}>
+                          {step}
+                        </p>
+                        <div className={`w-full h-1 rounded-full mt-2 ${
+                          idx <= currentStep ? 'bg-green-500' : 'bg-gray-200'
+                        }`}></div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
-        )}
 
-        {/* Back Button */}
-        <div className="text-center mt-6">
+          {/* Right Column - Map */}
+          <div className="lg:col-span-2">
+            {riderLocation && destinationCoords && (
+              <div className="bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100">
+                <div className="p-6 bg-gradient-to-r from-blue-50 to-purple-50 border-b border-gray-100">
+                  <h3 className="text-xl font-bold text-gray-800 mb-2">Live Tracking Map</h3>
+                  <div className="flex items-center space-x-4 text-sm text-gray-600">
+                    <div className="flex items-center space-x-2">
+                      <div className="w-4 h-4 bg-green-500 rounded-full"></div>
+                      <span>Pickup Location</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <div className="w-4 h-4 bg-red-500 rounded-full"></div>
+                      <span>Delivery Address</span>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="h-96 relative">
+                  <MapContainer
+                    key={mapKey}
+                    style={{ width: '100%', height: '100%' }}
+                    scrollWheelZoom={true}
+                    center={[(riderLocation.lat + destinationCoords.lat) / 2, (riderLocation.lng + destinationCoords.lng) / 2]}
+                    zoom={8}
+                    minZoom={2}
+                    maxZoom={18}
+                    ref={mapRef}
+                  >
+                    <TileLayer
+                      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                    />
+                    
+                    <Marker position={[riderLocation.lat, riderLocation.lng]} icon={pickupIcon}>
+                      <Popup>
+                        <div className="text-center p-2">
+                          <div className="font-bold text-green-600 mb-1">📦 Pickup Location</div>
+                          <div className="text-sm text-gray-600">{riderLocation.name}</div>
+                        </div>
+                      </Popup>
+                    </Marker>
+                    
+                    <Marker position={[destinationCoords.lat, destinationCoords.lng]} icon={deliveryIcon}>
+                      <Popup>
+                        <div className="text-center p-2">
+                          <div className="font-bold text-red-600 mb-1">🏠 Delivery Address</div>
+                          <div className="text-sm text-gray-600">{order.shippingAddress}</div>
+                        </div>
+                      </Popup>
+                    </Marker>
+                    
+                    <Polyline 
+                      positions={[
+                        [riderLocation.lat, riderLocation.lng], 
+                        [destinationCoords.lat, destinationCoords.lng]
+                      ]} 
+                      color="#3b82f6" 
+                      weight={3}
+                      opacity={0.8}
+                      dashArray="10, 10"
+                    />
+                  </MapContainer>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Bottom Actions */}
+        <div className="mt-8 flex justify-center space-x-4">
           <button 
             onClick={() => navigate('/myOrders')}
-            className="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium"
+            className="px-8 py-3 bg-gradient-to-r from-gray-600 to-gray-700 text-white rounded-xl hover:from-gray-700 hover:to-gray-800 transition-all duration-300 font-semibold shadow-lg hover:shadow-xl transform hover:scale-105"
           >
-            ← Back to My Orders
+            ← Back to Orders
+          </button>
+          <button 
+            className="px-8 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl hover:from-green-700 hover:to-emerald-700 transition-all duration-300 font-semibold shadow-lg hover:shadow-xl transform hover:scale-105"
+          >
+            📞 Contact Support
           </button>
         </div>
       </div>
@@ -301,4 +486,4 @@ const OrderTracker = () => {
   );
 };
 
-export default OrderTracker; 
+export default OrderTracker;

@@ -240,11 +240,11 @@ const TrackOrder = () => {
           });
         } else {
           // For normal orders: use product origin
-          const originCoords = getOriginCoordinates(productData.origin);
+          const coords = await getUserLocationCoordinates(productData.origin);
           setPickupLocation({
-            lat: originCoords.lat,
-            lng: originCoords.lng,
-            name: `Distribution Center, ${originCoords.name}`
+            lat: coords.lat,
+            lng: coords.lng,
+            name: `Origin - ${productData.origin}`
           });
         }
         
@@ -650,57 +650,7 @@ const TrackOrder = () => {
               </div>
             </motion.div>
 
-            {/* Environmental Impact (Green Products Only) */}
-            {order.isGreenProduct && greenProduct && (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.25 }}
-                className="bg-white rounded-2xl shadow-lg p-4"
-              >
-                <h3 className="text-base font-bold text-gray-900 mb-3 flex items-center gap-2">
-                  <Leaf className="w-4 h-4 text-green-600" />
-                  Environmental Impact
-                </h3>
-                <div className="grid grid-cols-2 gap-3">
-                  {/* Carbon Footprint */}
-                  <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl p-3 border border-green-200">
-                    <div className="flex items-center gap-2 mb-1">
-                      <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
-                        <span className="text-white text-xs">🌱</span>
-                      </div>
-                      <div>
-                        <h4 className="font-semibold text-green-800 text-xs">CO₂ Saved</h4>
-                        <p className="text-green-600 font-bold text-sm">
-                          {greenProduct.carbonFootprint || 0} kg
-                        </p>
-                      </div>
-                    </div>
-                    <p className="text-xs text-green-700">
-                      Equivalent to {Math.round((greenProduct.carbonFootprint || 0) / 22)} trees planted
-                    </p>
-            </div>
-
-                  {/* Green Coins */}
-                  <div className="bg-gradient-to-r from-yellow-50 to-amber-50 rounded-xl p-3 border border-yellow-200">
-                    <div className="flex items-center gap-2 mb-1">
-                      <div className="w-6 h-6 bg-yellow-500 rounded-full flex items-center justify-center">
-                        <span className="text-white text-xs">🪙</span>
-                      </div>
-                      <div>
-                        <h4 className="font-semibold text-yellow-800 text-xs">Green Coins</h4>
-                        <p className="text-yellow-600 font-bold text-sm">
-                          {greenProduct.greenCoins || 0}
-                        </p>
-                </div>
-              </div>
-                    <p className="text-xs text-yellow-700">
-                      Earned for eco-friendly choice
-                    </p>
-            </div>
-          </div>
-        </motion.div>
-            )}
+           
 
         {/* Contact Support */}
         <motion.div
@@ -784,21 +734,7 @@ const TrackOrder = () => {
                       </Popup>
                     </Marker>
                     
-                    {/* Truck Icon - Midway on route */}
-                    <Marker 
-                      position={[
-                        (pickupLocation.lat + deliveryLocation.lat) / 2,
-                        (pickupLocation.lng + deliveryLocation.lng) / 2
-                      ]}
-                      icon={truckIcon}
-                    >
-                      <Popup>
-                        <div className="text-center">
-                          <div className="font-bold text-orange-600">🚚 In Transit</div>
-                          <div className="text-sm">Your order is on the way!</div>
-                        </div>
-                      </Popup>
-                    </Marker>
+                 
                     
                     {/* Route Line */}
                     <Polyline

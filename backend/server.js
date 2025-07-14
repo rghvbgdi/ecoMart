@@ -10,6 +10,7 @@ app.use(cors({
   origin: [
     'http://localhost:5173',
     'http://35.154.220.113:5173',  
+    'https://sparkathon-frontend.vercel.app'
   ],
   credentials: true
 }));
@@ -44,8 +45,8 @@ app.get("/",(req,res)=> {
     app.use('/api/environmental', environmentalRoutes);
   app.use('/api/user',userRoutes);
 
-    app.listen(process.env.PORT || 3000, '0.0.0.0', () => {
-      console.log(`🚀 Server running on http://0.0.0.0:${process.env.PORT || 3000}`);
+    app.listen(process.env.PORT, () => {
+      console.log(`🚀 Server running on http://localhost:${process.env.PORT}`);
     });
   } catch (err) {
     console.error("❌ Server failed to start:", err.message);
